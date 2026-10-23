@@ -1,0 +1,38 @@
+"""Laboratory onboard RGB control with execution ACKs."""
+
+from homeassistant.components.select import SelectEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .const import COLORS
+from .entity import GatewayEntity
+
+PARALLEL_UPDATES = 0
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
+    async_add_entities([GatewayIndicator(entry.runtime_data, "indicator")])
+
+
+class GatewayIndicator(GatewayEntity, SelectEntity):
+    _attr_options = list(COLORS)
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.protocol.ready
+
+    @property
+    def current_option(self) -> str | None:
+        return self.coordinator.protocol.state.get("indicator")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        return {"state_confidence": "output_level_only"}
+
+    async def async_select_option(self, option: str) -> None:
+        await self.coordinator.async_command("set_indicator", option)

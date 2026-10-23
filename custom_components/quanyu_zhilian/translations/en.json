@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add CYD gateway",
+        "description": "Enter the gateway ID, controller ID, and binding token provisioned in the CYD firmware. The gateway must use the same MQTT broker.",
+        "data": {
+          "gateway_id": "Gateway ID",
+          "controller_id": "Controller ID",
+          "binding_token": "Binding token",
+          "area_id": "Room area"
+        }
+      }
+    },
+    "error": {
+      "mqtt_unavailable": "Configure and enable the MQTT integration first.",
+      "cannot_connect": "The gateway handshake failed. Check the gateway ID, token, broker ACL, and gateway availability.",
+      "invalid_gateway_id": "The gateway ID must be cyd_ followed by 12 lowercase hexadecimal characters.",
+      "invalid_controller_id": "The controller ID length is invalid.",
+      "invalid_binding_token": "The binding token must be 32 to 128 bytes.",
+      "invalid_area": "The selected room area does not exist.",
+      "room_too_long": "The room area name exceeds the firmware limit of 32 UTF-8 bytes."
+    },
+    "abort": {"already_configured": "This gateway is already configured."}
+  },
+  "entity": {
+    "sensor": {
+      "wifi_rssi": {"name": "Wi-Fi signal"},
+      "uptime": {"name": "Uptime"},
+      "free_heap": {"name": "Free heap"},
+      "min_free_heap": {"name": "Minimum free heap"},
+      "firmware": {"name": "Firmware version"},
+      "reset_reason": {"name": "Reset reason code"},
+      "transport": {"name": "Transport security mode"},
+      "last_report": {"name": "Last communication"},
+      "last_command_result": {"name": "Last command result"},
+      "configuration_status": {"name": "Configuration sync status"}
+    },
+    "binary_sensor": {
+      "gateway_online": {"name": "Gateway online"},
+      "control_ready": {"name": "Control ready"}
+    },
+    "select": {"indicator": {"name": "Onboard indicator"}},
+    "button": {"request_diagnostics": {"name": "Request diagnostics"}}
+  }
+}

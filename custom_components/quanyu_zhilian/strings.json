@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "添加 CYD 网关",
+        "description": "输入预配置在 CYD 固件中的网关 ID、控制器 ID 和绑定令牌。网关必须连接同一 MQTT Broker。",
+        "data": {
+          "gateway_id": "网关 ID",
+          "controller_id": "控制器 ID",
+          "binding_token": "绑定令牌",
+          "area_id": "房间区域"
+        }
+      }
+    },
+    "error": {
+      "mqtt_unavailable": "请先配置并启用 MQTT 集成。",
+      "cannot_connect": "无法完成网关握手。请检查网关 ID、令牌、Broker ACL 和网关在线状态。",
+      "invalid_gateway_id": "网关 ID 格式无效，应为 cyd_ 加 12 位小写十六进制字符。",
+      "invalid_controller_id": "控制器 ID 长度无效。",
+      "invalid_binding_token": "绑定令牌必须为 32 至 128 字节。",
+      "invalid_area": "所选房间区域不存在。",
+      "room_too_long": "区域名称超过网关支持的 32 字节。"
+    },
+    "abort": {
+      "already_configured": "此网关已经添加。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "wifi_rssi": {"name": "Wi-Fi 信号"},
+      "uptime": {"name": "运行时间"},
+      "free_heap": {"name": "可用堆内存"},
+      "min_free_heap": {"name": "最低可用堆内存"},
+      "firmware": {"name": "固件版本"},
+      "reset_reason": {"name": "重启原因代码"},
+      "transport": {"name": "传输安全模式"},
+      "last_report": {"name": "最后通信时间"},
+      "last_command_result": {"name": "最后命令结果"},
+      "configuration_status": {"name": "配置同步状态"}
+    },
+    "binary_sensor": {
+      "gateway_online": {"name": "网关在线"},
+      "control_ready": {"name": "控制就绪"}
+    },
+    "select": {
+      "indicator": {"name": "板载指示灯"}
+    },
+    "button": {
+      "request_diagnostics": {"name": "请求诊断上报"}
+    }
+  }
+}

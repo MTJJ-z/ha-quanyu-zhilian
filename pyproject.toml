@@ -1,0 +1,13 @@
+[project]
+name = "ha-quanyu-zhilian"
+version = "0.1.0"
+description = "Home Assistant custom integration for Quanyu Zhilian CYD gateways"
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+ignore = ["E501"]
