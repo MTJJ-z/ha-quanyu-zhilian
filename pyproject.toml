@@ -1,6 +1,6 @@
 [project]
 name = "ha-quanyu-zhilian"
-version = "0.1.1"
+version = "0.1.2"
 description = "Home Assistant custom integration for Quanyu Zhilian CYD gateways"
 requires-python = ">=3.12"
 

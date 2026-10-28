@@ -1,4 +1,4 @@
-# 全域智联 Home Assistant 集成 0.1.1
+# 全域智联 Home Assistant 集成 0.1.2
 
 这是与 OmniSpace CYD 固件 `qyzl.cyd.prototype/1` 配套的实验室首版集成。CYD 固件当前只能控制板载 RGB 指示灯并上报诊断数据；它不控制房间灯具、空调或其他外设。
 
@@ -31,6 +31,8 @@
 
 - 在线、控制就绪、固件、运行时间、RSSI、堆内存、重启原因、传输模式、最后通信及配置/命令结果。
 - 板载 RGB 选择器和诊断请求按钮。命令只发送一次并等待回执；5 秒无回执报告 `RESULT_UNKNOWN`，不会自动重发。
+- 红外学习开始/停止按钮和最近红外信号传感器。传感器属性包含协议、位数、载波频率和原始波形；捕获也会触发 `quanyu_zhilian_ir_captured` 事件。学习最长持续 30 秒。
+- 红外原始波形发送通过 `quanyu_zhilian.send_ir_raw` 服务调用，参数为 `gateway_id`、`raw` 和可选的 `frequency_khz`。回执只确认 CYD 已发出波形，不代表被控设备执行成功。
 - RGB 状态的置信度是 `output_level_only`，代表固件设置的 GPIO 输出状态，不代表肉眼或外部设备反馈。
 
 设备 Area 是房间权威来源。添加时可预选 Area；之后修改设备的 Area 会同步房间名称到 CYD。Area 名称无法通过 UTF-8 长度校验时，配置同步会停止并显示错误。
@@ -40,7 +42,7 @@
 - 该原型协议没有遥测签名。集成按 MQTT ACL 作为信任边界，并校验 schema、gateway ID、boot ID、消息序号和会话。必须给每台 CYD 单独账户并限制其 topic；禁止让不可信客户端发布到网关 topic。
 - Broker retained 的 hello/state/ACK 会被忽略。CYD 0.1.4 起以非 retained 方式周期发送 hello/state，让配置探测能识别新鲜在线设备；旧 retained 状态仍不能让设备显示在线。
 - HA 每 10 秒发送控制器心跳，超过 30 秒的遥测视为离线。Broker 在线状态和网关在线状态分开处理。
-- HA MQTT API 的 QoS 1 发布调用不返回设备执行 ACK；集成只以固件 `ack` 为准。命令不 retained。当前固件没有设备侧绝对截止时间，因此命令只允许用于隔离实验网的板载 LED 验证；集成不自动重发未知结果的命令。
+- HA MQTT API 的 QoS 1 发布调用不返回设备执行 ACK；集成只以固件 `ack` 为准。命令不 retained。当前固件没有设备侧绝对截止时间；集成不自动重发未知结果的命令。仅在可信本地网络测试红外收发。
 - 固件当前 uplink 是 QoS 0，配置只保存在 RAM，重启后必须由集成重新同步。不能据此宣称控制达到端到端 QoS 1。
 - 绑定令牌随出站 MQTT 消息发送，Broker ACL 和 TLS 保护链路是必要条件。实验固件明文 MQTT 仅限隔离环境板载灯测试；不得用于真实设备控制。
 - 集成本身不记录 payload。HA MQTT 的 DEBUG 日志可能包含完整出站消息和令牌；避免在真实令牌环境启用该日志或将日志公开。诊断导出隐藏绑定令牌、网关 ID、控制器 ID 和初始 Area ID。

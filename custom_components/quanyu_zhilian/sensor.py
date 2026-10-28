@@ -52,7 +52,10 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     async_add_entities(
-        GatewaySensor(entry.runtime_data, description) for description in DESCRIPTIONS
+        [
+            *(GatewaySensor(entry.runtime_data, description) for description in DESCRIPTIONS),
+            GatewayIrCaptureSensor(entry.runtime_data),
+        ]
     )
 
 
@@ -86,3 +89,27 @@ class GatewaySensor(GatewayEntity, SensorEntity):
         if key == "configuration_status":
             return protocol.configuration_error or ("ready" if protocol.ready else "waiting")
         return protocol.state.get(key)
+
+
+class GatewayIrCaptureSensor(GatewayEntity, SensorEntity):
+    """Expose the most recently learned IR signal for scripts and automations."""
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "last_ir_capture")
+
+    @property
+    def native_value(self):
+        capture = self.coordinator.protocol.last_ir_capture
+        return capture.get("protocol") if capture else None
+
+    @property
+    def extra_state_attributes(self):
+        capture = self.coordinator.protocol.last_ir_capture
+        if not capture:
+            return None
+        return {
+            "capture_id": capture["capture_id"],
+            "bits": capture["bits"],
+            "frequency_khz": capture["frequency_khz"],
+            "raw": capture["raw"],
+        }
