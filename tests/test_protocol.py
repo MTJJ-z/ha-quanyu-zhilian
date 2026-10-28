@@ -83,6 +83,16 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.protocol.feed("state", self.telemetry(boot_id="invalid"), False)
         self.assertFalse(self.protocol.online)
 
+    async def test_live_state_after_retained_snapshot_starts_controller_sync(self):
+        payload = self.telemetry(suffix="state", firmware="0.1.4")
+        self.protocol.feed("state", payload, True)
+        self.assertFalse(self.protocol.online)
+
+        self.protocol.feed("state", payload, False)
+        self.assertTrue(self.protocol.online)
+        await self.protocol.tick()
+        self.assertEqual([topic for topic, _ in self.published], ["controller", "config"])
+
     async def test_handshake_and_controller_heartbeat_sequence(self):
         await self.handshake()
         self.assertTrue(self.protocol.ready)

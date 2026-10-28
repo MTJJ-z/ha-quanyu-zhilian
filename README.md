@@ -1,4 +1,4 @@
-# 全域智联 Home Assistant 集成 0.1.0
+# 全域智联 Home Assistant 集成 0.1.1
 
 这是与 OmniSpace CYD 固件 `qyzl.cyd.prototype/1` 配套的实验室首版集成。CYD 固件当前只能控制板载 RGB 指示灯并上报诊断数据；它不控制房间灯具、空调或其他外设。
 
@@ -16,7 +16,7 @@
 
 将 `custom_components/quanyu_zhilian` 复制到 HA OS 的 `/config/custom_components/quanyu_zhilian`，然后重启 Home Assistant。MQTT 集成必须已配置并连接到 CYD 使用的同一 Broker。工程不修改 HA Core 或 HA OS。
 
-也可解压 `dist/quanyu_zhilian-0.1.0.zip`，将其中的 `custom_components` 目录合并到 `/config`。安装包仅包含 Python/JSON 源码及说明，不包含测试缓存或凭据。运行 `python build_release.py` 可重新生成安装包及 SHA256。
+也可解压 `dist/quanyu_zhilian-0.1.1.zip`，将其中的 `custom_components` 目录合并到 `/config`。安装包仅包含 Python/JSON 源码及说明，不包含测试缓存或凭据。运行 `python build_release.py` 可重新生成安装包及 SHA256。
 
 ## 添加网关
 
@@ -38,14 +38,14 @@
 ## 安全边界和已知限制
 
 - 该原型协议没有遥测签名。集成按 MQTT ACL 作为信任边界，并校验 schema、gateway ID、boot ID、消息序号和会话。必须给每台 CYD 单独账户并限制其 topic；禁止让不可信客户端发布到网关 topic。
-- Broker retained 的 hello/state/ACK 会被忽略。网关必须重新在线发送状态，旧 retained 状态不能让设备显示在线。
+- Broker retained 的 hello/state/ACK 会被忽略。CYD 0.1.4 起以非 retained 方式周期发送 hello/state，让配置探测能识别新鲜在线设备；旧 retained 状态仍不能让设备显示在线。
 - HA 每 10 秒发送控制器心跳，超过 30 秒的遥测视为离线。Broker 在线状态和网关在线状态分开处理。
 - HA MQTT API 的 QoS 1 发布调用不返回设备执行 ACK；集成只以固件 `ack` 为准。命令不 retained。当前固件没有设备侧绝对截止时间，因此命令只允许用于隔离实验网的板载 LED 验证；集成不自动重发未知结果的命令。
 - 固件当前 uplink 是 QoS 0，配置只保存在 RAM，重启后必须由集成重新同步。不能据此宣称控制达到端到端 QoS 1。
 - 绑定令牌随出站 MQTT 消息发送，Broker ACL 和 TLS 保护链路是必要条件。实验固件明文 MQTT 仅限隔离环境板载灯测试；不得用于真实设备控制。
 - 集成本身不记录 payload。HA MQTT 的 DEBUG 日志可能包含完整出站消息和令牌；避免在真实令牌环境启用该日志或将日志公开。诊断导出隐藏绑定令牌、网关 ID、控制器 ID 和初始 Area ID。
 - 配置流程需要网关在线并在 25 秒内完成状态与配置 ACK。未知固件版本/schema 会被拒绝。
-- 当前支持固件版本 `0.1.0` 和 `0.1.1`（同一原型协议）。没有凭据重配界面、自动发现、OTA 或外部设备适配；修改令牌/控制器 ID 暂需删除集成并按新固件配置重新添加。删除集成不会清除 CYD 的 NVS 或 Broker 账户。
+- 当前支持固件版本 `0.1.0`、`0.1.1`、`0.1.3` 和 `0.1.4`（同一原型协议）。没有凭据重配界面、自动发现或外部设备适配；修改令牌/控制器 ID 暂需删除集成并按新固件配置重新添加。删除集成不会清除 CYD 的 NVS 或 Broker 账户。
 
 ## 开发验证
 

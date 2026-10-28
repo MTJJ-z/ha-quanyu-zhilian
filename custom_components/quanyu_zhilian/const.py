@@ -2,7 +2,7 @@
 
 DOMAIN = "quanyu_zhilian"
 SCHEMA = "qyzl.cyd.prototype/1"
-SUPPORTED_FIRMWARE = {"0.1.0", "0.1.1", "0.1.3"}
+SUPPORTED_FIRMWARE = {"0.1.0", "0.1.1", "0.1.3", "0.1.4"}
 TOPIC_ROOT = "qyzl/prototype/v1/gateway"
 CONF_GATEWAY_ID = "gateway_id"
 CONF_CONTROLLER_ID = "controller_id"
