@@ -34,18 +34,13 @@
       "transport": {"name": "Transport security mode"},
       "last_report": {"name": "Last communication"},
       "last_command_result": {"name": "Last command result"},
-      "configuration_status": {"name": "Configuration sync status"},
-      "last_ir_capture": {"name": "Last infrared signal"}
+      "configuration_status": {"name": "Configuration sync status"}
     },
     "binary_sensor": {
       "gateway_online": {"name": "Gateway online"},
       "control_ready": {"name": "Control ready"}
     },
     "select": {"indicator": {"name": "Onboard indicator"}},
-    "button": {
-      "request_diagnostics": {"name": "Request diagnostics"},
-      "start_ir_capture": {"name": "Learn infrared signal"},
-      "stop_ir_capture": {"name": "Stop infrared learning"}
-    }
+    "button": {"request_diagnostics": {"name": "Request diagnostics"}}
   }
 }

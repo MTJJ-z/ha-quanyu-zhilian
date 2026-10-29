@@ -11,7 +11,7 @@ from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT, UnitOfInform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .entity import GatewayEntity
+from .entity import ComponentEntity, GatewayEntity
 
 PARALLEL_UPDATES = 0
 DESCRIPTIONS = (
@@ -52,10 +52,12 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     async_add_entities(
-        [
-            *(GatewaySensor(entry.runtime_data, description) for description in DESCRIPTIONS),
-            GatewayIrCaptureSensor(entry.runtime_data),
-        ]
+        GatewaySensor(entry.runtime_data, description) for description in DESCRIPTIONS
+    )
+    entry.runtime_data.register_component_platform(
+        "sensor",
+        async_add_entities,
+        lambda descriptor: [GatewayComponentSensor(entry.runtime_data, descriptor)],
     )
 
 
@@ -91,25 +93,15 @@ class GatewaySensor(GatewayEntity, SensorEntity):
         return protocol.state.get(key)
 
 
-class GatewayIrCaptureSensor(GatewayEntity, SensorEntity):
-    """Expose the most recently learned IR signal for scripts and automations."""
+class GatewayComponentSensor(ComponentEntity, SensorEntity):
+    """Display a scalar value reported by a discovered component."""
 
-    def __init__(self, coordinator) -> None:
-        super().__init__(coordinator, "last_ir_capture")
+    def __init__(self, coordinator, descriptor: dict) -> None:
+        super().__init__(coordinator, descriptor, descriptor["id"])
+        self._attr_device_class = descriptor.get("device_class")
+        self._attr_native_unit_of_measurement = descriptor.get("unit")
+        self._attr_state_class = descriptor.get("state_class")
 
     @property
     def native_value(self):
-        capture = self.coordinator.protocol.last_ir_capture
-        return capture.get("protocol") if capture else None
-
-    @property
-    def extra_state_attributes(self):
-        capture = self.coordinator.protocol.last_ir_capture
-        if not capture:
-            return None
-        return {
-            "capture_id": capture["capture_id"],
-            "bits": capture["bits"],
-            "frequency_khz": capture["frequency_khz"],
-            "raw": capture["raw"],
-        }
+        return self.component_state.get("value")

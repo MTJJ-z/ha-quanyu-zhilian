@@ -36,8 +36,7 @@
       "transport": {"name": "传输安全模式"},
       "last_report": {"name": "最后通信时间"},
       "last_command_result": {"name": "最后命令结果"},
-      "configuration_status": {"name": "配置同步状态"},
-      "last_ir_capture": {"name": "最近红外信号"}
+      "configuration_status": {"name": "配置同步状态"}
     },
     "binary_sensor": {
       "gateway_online": {"name": "网关在线"},
@@ -47,9 +46,7 @@
       "indicator": {"name": "板载指示灯"}
     },
     "button": {
-      "request_diagnostics": {"name": "请求诊断上报"},
-      "start_ir_capture": {"name": "开始学习红外"},
-      "stop_ir_capture": {"name": "停止学习红外"}
+      "request_diagnostics": {"name": "请求诊断上报"}
     }
   }
 }

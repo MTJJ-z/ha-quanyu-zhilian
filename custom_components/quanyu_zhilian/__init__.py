@@ -4,15 +4,23 @@ from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+import voluptuous as vol
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 
-from .const import CONF_AREA_ID, CONF_GATEWAY_ID, DOMAIN, IR_CAPTURE_EVENT
+from .const import CONF_AREA_ID, CONF_GATEWAY_ID, DOMAIN
 from .coordinator import GatewayCoordinator
 from .protocol import GatewayError
 
-PLATFORMS = (Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SELECT, Platform.BUTTON)
+PLATFORMS = (
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.SELECT,
+    Platform.SWITCH,
+    Platform.BUTTON,
+)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -23,34 +31,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.runtime_data = coordinator
     coordinators = hass.data.setdefault(DOMAIN, {})
     coordinators[entry.data[CONF_GATEWAY_ID]] = coordinator
-    if not hass.services.has_service(DOMAIN, "start_ir_capture"):
+    if not hass.services.has_service(DOMAIN, "execute"):
         async def get_gateway(call):
             gateway = hass.data.get(DOMAIN, {}).get(call.data.get("gateway_id"))
             if gateway is None:
                 raise HomeAssistantError("Unknown CYD gateway_id")
             return gateway
 
-        async def start_ir_capture(call):
-            await (await get_gateway(call)).async_command("receive_start")
-
-        async def stop_ir_capture(call):
-            await (await get_gateway(call)).async_command("receive_stop")
-
-        async def send_ir_raw(call):
+        async def execute(call):
             gateway = await get_gateway(call)
             await gateway.async_command(
-                "send_raw",
-                raw=call.data["raw"],
-                frequency_khz=call.data.get("frequency_khz", 38),
+                call.data["command_id"],
+                target=call.data["component_id"],
+                command_id=call.data["command_id"],
+                parameters=call.data.get("parameters", {}),
             )
 
-        hass.services.async_register(DOMAIN, "start_ir_capture", start_ir_capture)
-        hass.services.async_register(DOMAIN, "stop_ir_capture", stop_ir_capture)
-        hass.services.async_register(DOMAIN, "send_ir_raw", send_ir_raw)
-    async def forward_ir_capture(data):
-        hass.bus.async_fire(IR_CAPTURE_EVENT, {"gateway_id": entry.data[CONF_GATEWAY_ID], **data})
-
-    coordinator.ir_capture_callback = forward_ir_capture
+        hass.services.async_register(
+            DOMAIN,
+            "execute",
+            execute,
+            schema=vol.Schema(
+                {
+                    vol.Required("gateway_id"): cv.string,
+                    vol.Required("component_id"): cv.string,
+                    vol.Required("command_id"): cv.string,
+                    vol.Optional("parameters", default={}): dict,
+                }
+            ),
+        )
     registry = dr.async_get(hass)
     existing = registry.async_get_device(identifiers={(DOMAIN, entry.data[CONF_GATEWAY_ID])})
     device = registry.async_get_or_create(

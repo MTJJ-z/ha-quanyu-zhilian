@@ -6,6 +6,7 @@ Retained telemetry is deliberately ignored until a live report arrives.
 
 import asyncio
 import json
+import math
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -16,11 +17,9 @@ from .const import (
     COLORS,
     COMMAND_TIMEOUT,
     HEARTBEAT_SECONDS,
-    IR_MAX_RAW,
     MAX_PENDING,
     SCHEMA,
     STALE_SECONDS,
-    SUPPORTED_FIRMWARE,
 )
 
 
@@ -47,6 +46,189 @@ def validate_room(room: str) -> None:
 def uint32(value: Any) -> bool:
     """JSON booleans are not integer sequence numbers."""
     return type(value) is int and 0 <= value <= 0xFFFFFFFF
+
+
+def reject_json_constant(value: str) -> None:
+    """Python's JSON decoder accepts NaN and Infinity unless explicitly rejected."""
+    raise ValueError(f"Invalid JSON constant: {value}")
+
+
+COMPONENT_ID = re.compile(r"[a-z][a-z0-9_.-]{0,63}")
+COMPONENT_PLATFORMS = {"sensor", "binary_sensor", "switch", "select", "button"}
+PARAMETER_TYPES = {"string", "boolean", "integer", "number", "integer_array"}
+
+
+def validate_components(model: Any, raw: Any) -> dict[str, dict[str, Any]] | None:
+    """Validate the optional, versioned component discovery extension."""
+    if model is None and raw is None:
+        return {}
+    if type(model) is not int or model != 1 or not isinstance(raw, list) or len(raw) > 64:
+        return None
+    components: dict[str, dict[str, Any]] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            return None
+        component_id = item.get("id")
+        platform = item.get("platform")
+        name = item.get("name")
+        state_key = item.get("state_key")
+        commands = item.get("commands")
+        if (
+            not isinstance(component_id, str)
+            or not COMPONENT_ID.fullmatch(component_id)
+            or component_id in components
+            or not isinstance(platform, str)
+            or platform not in COMPONENT_PLATFORMS
+            or not isinstance(name, str)
+            or not 1 <= len(name) <= 64
+            or not isinstance(state_key, str)
+            or not COMPONENT_ID.fullmatch(state_key)
+            or not isinstance(commands, list)
+            or len(commands) > 16
+        ):
+            return None
+        if any(existing["state_key"] == state_key for existing in components.values()):
+            return None
+        normalized_commands: dict[str, dict[str, Any]] = {}
+        for command in commands:
+            if not isinstance(command, dict):
+                return None
+            command_id, action = command.get("id"), command.get("action")
+            command_name, params = command.get("name"), command.get("parameters")
+            if (
+                not isinstance(command_id, str)
+                or not COMPONENT_ID.fullmatch(command_id)
+                or command_id in normalized_commands
+                or not isinstance(action, str)
+                or not COMPONENT_ID.fullmatch(action)
+                or not isinstance(command_name, str)
+                or not 1 <= len(command_name) <= 64
+                or not isinstance(params, list)
+                or len(params) > 16
+            ):
+                return None
+            normalized_params: dict[str, dict[str, Any]] = {}
+            for parameter in params:
+                if not isinstance(parameter, dict):
+                    return None
+                param_name, param_type = parameter.get("name"), parameter.get("type")
+                required = parameter.get("required", True)
+                if (
+                    not isinstance(param_name, str)
+                    or not COMPONENT_ID.fullmatch(param_name)
+                    or param_name in normalized_params
+                    or not isinstance(param_type, str)
+                    or param_type not in PARAMETER_TYPES
+                    or type(required) is not bool
+                ):
+                    return None
+                for bound in ("min", "max"):
+                    if bound in parameter and (
+                        type(parameter[bound]) not in (int, float)
+                        or not math.isfinite(parameter[bound])
+                    ):
+                        return None
+                for bound in ("min_items", "max_items"):
+                    if bound in parameter and type(parameter[bound]) is not int:
+                        return None
+                if (
+                    "min" in parameter
+                    and "max" in parameter
+                    and parameter["min"] > parameter["max"]
+                ) or (
+                    "min_items" in parameter
+                    and "max_items" in parameter
+                    and parameter["min_items"] > parameter["max_items"]
+                ):
+                    return None
+                normalized_params[param_name] = dict(parameter)
+            normalized_commands[command_id] = {
+                "id": command_id,
+                "action": action,
+                "name": command_name,
+                "parameters": normalized_params,
+            }
+        descriptor = dict(item)
+        descriptor["commands"] = normalized_commands
+        for field in ("icon", "device_class", "unit", "state_class", "entity_category"):
+            if field in descriptor and (
+                not isinstance(descriptor[field], str) or len(descriptor[field]) > 64
+            ):
+                return None
+        if descriptor.get("entity_category") not in (None, "config", "diagnostic"):
+            return None
+        if descriptor.get("state_class") not in (
+            None,
+            "measurement",
+            "total",
+            "total_increasing",
+        ):
+            return None
+        if platform in ("switch", "select"):
+            control = item.get("control")
+            if (
+                not isinstance(control, dict)
+                or not isinstance(control.get("command_id"), str)
+                or not isinstance(control.get("value_parameter"), str)
+            ):
+                return None
+            command = normalized_commands.get(control.get("command_id"))
+            value_parameter = control.get("value_parameter")
+            parameter = command and command["parameters"].get(value_parameter)
+            expected = "boolean" if platform == "switch" else "string"
+            if not parameter or parameter["type"] != expected or not parameter.get("required", True):
+                return None
+            if platform == "select":
+                options = item.get("options")
+                if (
+                    not isinstance(options, list)
+                    or not 1 <= len(options) <= 64
+                    or any(not isinstance(option, str) or len(option) > 64 for option in options)
+                    or len(set(options)) != len(options)
+                ):
+                    return None
+        components[component_id] = descriptor
+    return components
+
+
+def validate_parameters(command: dict[str, Any], values: Any) -> dict[str, Any]:
+    """Validate execute-service arguments against an advertised command."""
+    if not isinstance(values, dict):
+        raise GatewayError("INVALID_ARGUMENT")
+    schema = command["parameters"]
+    if values.keys() - schema.keys():
+        raise GatewayError("INVALID_ARGUMENT")
+    result: dict[str, Any] = {}
+    for name, descriptor in schema.items():
+        if name not in values:
+            if descriptor.get("required", True):
+                raise GatewayError("INVALID_ARGUMENT")
+            continue
+        value, kind = values[name], descriptor["type"]
+        valid = (
+            isinstance(value, str) if kind == "string" else
+            type(value) is bool if kind == "boolean" else
+            type(value) is int if kind == "integer" else
+            type(value) in (int, float) and not isinstance(value, bool) if kind == "number" else
+            isinstance(value, list) and all(type(v) is int for v in value) if kind == "integer_array" else
+            False
+        )
+        if not valid:
+            raise GatewayError("INVALID_ARGUMENT")
+        if kind in ("integer", "number"):
+            if kind == "number" and not math.isfinite(value):
+                raise GatewayError("INVALID_ARGUMENT")
+            if "min" in descriptor and value < descriptor["min"]:
+                raise GatewayError("INVALID_ARGUMENT")
+            if "max" in descriptor and value > descriptor["max"]:
+                raise GatewayError("INVALID_ARGUMENT")
+        if kind == "integer_array":
+            if len(value) < descriptor.get("min_items", 0):
+                raise GatewayError("INVALID_ARGUMENT")
+            if len(value) > descriptor.get("max_items", 1024):
+                raise GatewayError("INVALID_ARGUMENT")
+        result[name] = value
+    return result
 
 
 class GatewayProtocol:
@@ -82,7 +264,8 @@ class GatewayProtocol:
         self.configured = False
         self.configuration_error: str | None = None
         self.last_command_result = "none"
-        self.last_ir_capture: dict[str, Any] | None = None
+        self.components: dict[str, dict[str, Any]] = {}
+        self.component_states: dict[str, dict[str, Any]] = {}
         self._heartbeat_sequence = 0
         self._command_sequence = 0
         self._heartbeat_at = float("-inf")
@@ -176,10 +359,10 @@ class GatewayProtocol:
                 self._new_session()
                 self._changed()
             return False
-        if retained or not self.broker_connected or len(payload.encode("utf-8")) > 2048:
+        if retained or not self.broker_connected or len(payload.encode("utf-8")) > 65536:
             return False
         try:
-            data = json.loads(payload)
+            data = json.loads(payload, parse_constant=reject_json_constant)
         except (ValueError, RecursionError):
             return False
         if not isinstance(data, dict) or data.get("schema") != SCHEMA:
@@ -195,6 +378,51 @@ class GatewayProtocol:
         if suffix in ("hello", "state"):
             if not self._valid_state(data):
                 return False
+            if suffix == "hello" or "component_model" in data:
+                components = validate_components(
+                    data.get("component_model"), data.get("components")
+                )
+                if components is None:
+                    return False
+            else:
+                components = self.components
+            states = data.get("component_states", {})
+            if not isinstance(states, dict) or len(states) > 64:
+                return False
+            normalized_states: dict[str, dict[str, Any]] = {}
+            for component_id, component_state in states.items():
+                descriptor = next(
+                    (item for item in components.values() if item["state_key"] == component_id),
+                    None,
+                )
+                if (
+                    not descriptor
+                    or not isinstance(component_state, dict)
+                    or "value" not in component_state
+                    or len(json.dumps(component_state, separators=(",", ":")).encode()) > 8192
+                ):
+                    return False
+                value = component_state["value"]
+                platform = descriptor["platform"]
+                if platform in ("binary_sensor", "switch") and type(value) is not bool:
+                    return False
+                if platform == "sensor" and (
+                    value is not None
+                    and type(value) not in (str, int, float)
+                ):
+                    return False
+                if platform == "sensor" and isinstance(value, str) and len(value) > 255:
+                    return False
+                if platform == "sensor" and type(value) is float and not math.isfinite(value):
+                    return False
+                if platform == "select" and (
+                    not isinstance(value, str) or value not in descriptor["options"]
+                ):
+                    return False
+                attributes = component_state.get("attributes", {})
+                if not isinstance(attributes, dict):
+                    return False
+                normalized_states[component_id] = {"value": value, "attributes": attributes}
             if boot != self.boot_id:
                 self.boot_id = boot
                 self.last_sequence = -1
@@ -222,6 +450,9 @@ class GatewayProtocol:
                     "transport",
                 )
             }
+            if suffix == "hello" or "component_model" in data:
+                self.components = components
+            self.component_states = normalized_states
             self.last_seen = self._clock()
             if self.revision <= data["config_revision"] and (
                 not self.configured or data["room"] != self.room
@@ -248,28 +479,7 @@ class GatewayProtocol:
             else:
                 self.ready_event.clear()
             self._changed()
-        elif suffix == "ir":
-            raw = data.get("raw")
-            frequency = data.get("frequency_khz")
-            if (
-                not isinstance(raw, list)
-                or not 2 <= len(raw) <= IR_MAX_RAW
-                or not uint32(frequency)
-                or not 30 <= frequency <= 60
-                or any(not uint32(item) or not 100 <= item <= 30000 for item in raw)
-            ):
-                return False
-            self.last_sequence = seq
-            self.last_ir_capture = {
-                "capture_id": data.get("capture_id"),
-                "frequency_khz": frequency,
-                "protocol": str(data.get("protocol", "UNKNOWN"))[:40],
-                "bits": data.get("bits") if uint32(data.get("bits")) else 0,
-                "raw": raw,
-            }
-            self._changed()
-            return True
-        elif suffix == "ack":
+        if suffix == "ack":
             if data.get("session_id") != self.session_id:
                 return False
             command_id = data.get("command_id")
@@ -279,9 +489,11 @@ class GatewayProtocol:
             if result not in ("executed", "rejected") or not isinstance(error, str):
                 return False
             confidence = data.get("confidence")
-            if len(error) > 64 or data.get("indicator") not in COLORS or confidence not in (
-                "output_level_only",
-                "transmitted_only",
+            if (
+                len(error) > 64
+                or data.get("indicator") not in COLORS
+                or not isinstance(confidence, str)
+                or not 1 <= len(confidence) <= 64
             ):
                 return False
             self.last_sequence = seq
@@ -300,7 +512,7 @@ class GatewayProtocol:
                 return False
         return (
             isinstance(data.get("firmware"), str)
-            and data["firmware"] in SUPPORTED_FIRMWARE
+            and 1 <= len(data["firmware"]) <= 32
             and isinstance(data.get("room"), str)
             and len(data["room"].encode("utf-8")) <= 32
             and type(data.get("controller_online")) is bool
@@ -354,20 +566,27 @@ class GatewayProtocol:
         raw: list[int] | None = None,
         frequency_khz: int = 38,
         ack_timeout: float = COMMAND_TIMEOUT,
+        target: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        command_id: str | None = None,
     ) -> dict[str, Any]:
         """Send once and await device ACK; never replay an uncertain action."""
-        if action == "set_indicator" and color in COLORS:
+        target_name = target
+        wire_action = action
+        if target is not None:
+            if not COMPONENT_ID.fullmatch(target) or target not in self.components:
+                raise GatewayError("UNKNOWN_COMPONENT")
+            command = self.components[target]["commands"].get(command_id or action)
+            if not command:
+                raise GatewayError("UNKNOWN_COMMAND")
+            parameters = validate_parameters(
+                command, parameters if parameters is not None else {}
+            )
+            wire_action = command["action"]
+        elif action == "set_indicator" and color in COLORS:
             target, parameters = "onboard.rgb", {"color": color}
         elif action == "request_diagnostics" and color is None:
             target, parameters = "gateway", {}
-        elif action in ("receive_start", "receive_stop") and color is None and raw is None:
-            target, parameters = "onboard.ir", {}
-        elif action == "send_raw" and color is None and isinstance(raw, list):
-            if not 2 <= len(raw) <= IR_MAX_RAW or not 30 <= frequency_khz <= 60:
-                raise GatewayError("INVALID_ARGUMENT")
-            if any(type(value) is not int or not 100 <= value <= 30000 for value in raw):
-                raise GatewayError("INVALID_ARGUMENT")
-            target, parameters = "onboard.ir", {"raw": raw, "frequency_khz": frequency_khz}
         else:
             raise GatewayError("UNSUPPORTED_CAPABILITY")
         command_id = uuid4().hex
@@ -389,8 +608,8 @@ class GatewayProtocol:
                         "command_id": command_id,
                         "command_seq": self._command_sequence,
                         "config_revision": self.revision,
-                        "target": target,
-                        "action": action,
+                        "target": target_name if target_name else target,
+                        "action": wire_action,
                         "parameters": parameters,
                     },
                 )

@@ -38,7 +38,7 @@ class GatewayCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._probe_room = probe_room
         self._unsubscribers: list[Any] = []
         self.last_report_at: datetime | None = None
-        self.ir_capture_callback = None
+        self._component_callbacks: list[Any] = []
         self._stopped = False
         self.protocol = GatewayProtocol(
             data[CONF_GATEWAY_ID],
@@ -64,6 +64,8 @@ class GatewayCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @callback
     def _notify(self) -> None:
         if not self._stopped:
+            for update_components in tuple(self._component_callbacks):
+                update_components(self.protocol.components)
             self.async_set_updated_data(
                 {
                     **self.protocol.state,
@@ -74,14 +76,30 @@ class GatewayCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }
             )
 
+    def register_component_platform(self, platform: str, add_entities, factory) -> None:
+        """Add newly advertised components to an already loaded HA platform."""
+        known: set[str] = set()
+
+        def update(components: dict[str, dict[str, Any]]) -> None:
+            additions = []
+            for component_id, descriptor in components.items():
+                if descriptor["platform"] != platform or component_id in known:
+                    continue
+                known.add(component_id)
+                additions.extend(factory(descriptor))
+            if additions:
+                add_entities(additions)
+
+        self._component_callbacks.append(update)
+        update(self.protocol.components)
+
     async def _publish(self, suffix: str, payload: dict[str, Any]) -> None:
         if self._stopped or not mqtt.is_connected(self.hass):
             raise GatewayError("BROKER_UNAVAILABLE")
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-        if len(encoded.encode("utf-8")) > 2048:
+        if len(encoded.encode("utf-8")) > 65536:
             raise GatewayError("MESSAGE_TOO_LARGE")
-        # The prototype firmware does not enforce an absolute command deadline;
-        # only use it for isolated onboard-indicator tests.
+        # The prototype firmware does not enforce an absolute command deadline.
         try:
             async with asyncio.timeout(5):
                 await mqtt.async_publish(
@@ -102,8 +120,6 @@ class GatewayCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             message.payload,
             message.retain,
         )
-        if message.topic.endswith("/ir") and self.protocol.last_ir_capture and self.ir_capture_callback:
-            self.ir_capture_callback(self.protocol.last_ir_capture)
         if live:
             self.last_report_at = dt_util.utcnow()
             if self.device_id and self.entry:
@@ -162,6 +178,7 @@ class GatewayCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @callback
     def async_stop(self) -> None:
         self._stopped = True
+        self._component_callbacks.clear()
         for unsubscribe in self._unsubscribers:
             unsubscribe()
         self._unsubscribers.clear()
@@ -173,8 +190,19 @@ class GatewayCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         color: str | None = None,
         raw: list[int] | None = None,
         frequency_khz: int = 38,
+        target: str | None = None,
+        command_id: str | None = None,
+        parameters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         try:
-            return await self.protocol.command(action, color, raw, frequency_khz)
+            return await self.protocol.command(
+                action,
+                color,
+                raw,
+                frequency_khz,
+                target=target,
+                command_id=command_id,
+                parameters=parameters,
+            )
         except GatewayError as err:
             raise HomeAssistantError(str(err)) from err

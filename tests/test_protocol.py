@@ -12,7 +12,12 @@ package = types.ModuleType("quanyu_zhilian")
 package.__path__ = [str(PACKAGE_PATH)]
 sys.modules.setdefault("quanyu_zhilian", package)
 
-from quanyu_zhilian.protocol import GatewayError, GatewayProtocol  # noqa: E402
+from quanyu_zhilian.protocol import (  # noqa: E402
+    GatewayError,
+    GatewayProtocol,
+    validate_components,
+    validate_parameters,
+)
 
 
 class ProtocolTests(unittest.IsolatedAsyncioTestCase):
@@ -100,6 +105,107 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         heartbeats = [message for topic, message in self.published if topic == "controller"]
         self.assertEqual(heartbeats[0]["sequence"], 1)
         self.assertEqual(heartbeats[0]["session_id"], self.protocol.session_id)
+
+    async def test_component_extension_discovers_state_and_validates_command(self):
+        descriptor = {
+            "id": "ir.receiver",
+            "platform": "sensor",
+            "name": "Last infrared signal",
+            "state_key": "last_signal",
+            "commands": [
+                {
+                    "id": "send_raw",
+                    "action": "send_raw",
+                    "name": "Send signal",
+                    "parameters": [
+                        {"name": "raw", "type": "integer_array", "min_items": 2, "max_items": 100},
+                        {"name": "frequency_khz", "type": "integer", "min": 30, "max": 60},
+                    ],
+                }
+            ],
+        }
+        payload = json.loads(self.telemetry("hello"))
+        payload.update(component_model=1, components=[descriptor])
+        self.assertTrue(self.protocol.feed("hello", json.dumps(payload), False))
+        payload["sequence"] = 2
+        payload["component_states"] = {
+            "last_signal": {
+                "value": "NEC",
+                "attributes": {"bits": 32, "raw": [9000, 4500]},
+            }
+        }
+        self.assertTrue(self.protocol.feed("state", json.dumps(payload), False))
+        self.assertEqual(self.protocol.components["ir.receiver"]["platform"], "sensor")
+        self.assertEqual(self.protocol.component_states["last_signal"]["value"], "NEC")
+        command = self.protocol.components["ir.receiver"]["commands"]["send_raw"]
+        self.assertEqual(
+            validate_parameters(command, {"raw": [9000, 4500], "frequency_khz": 38}),
+            {"raw": [9000, 4500], "frequency_khz": 38},
+        )
+        with self.assertRaisesRegex(GatewayError, "INVALID_ARGUMENT"):
+            validate_parameters(command, {"raw": [9000], "frequency_khz": 99})
+
+    async def test_invalid_component_descriptors_are_rejected(self):
+        self.assertIsNone(validate_components(1, [{"id": "../unsafe"}]))
+        self.assertIsNone(validate_components(2, []))
+        self.assertIsNone(validate_components(True, []))
+
+    async def test_generic_component_command_uses_advertised_action(self):
+        await self.handshake()
+        self.protocol.components = validate_components(
+            1,
+            [
+                {
+                    "id": "ir.transmitter",
+                    "platform": "button",
+                    "name": "Infrared transmitter",
+                    "state_key": "tx_state",
+                    "commands": [
+                        {
+                            "id": "send_raw",
+                            "action": "module.ir.send",
+                            "name": "Send raw signal",
+                            "parameters": [
+                                {"name": "raw", "type": "integer_array", "min_items": 2},
+                                {"name": "frequency_khz", "type": "integer", "min": 30, "max": 60},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        )
+        task = asyncio.create_task(
+            self.protocol.command(
+                "send_raw",
+                target="ir.transmitter",
+                command_id="send_raw",
+                parameters={"raw": [9000, 4500], "frequency_khz": 38},
+            )
+        )
+        await asyncio.sleep(0)
+        command = self.published[-1][1]
+        self.assertEqual(command["target"], "ir.transmitter")
+        self.assertEqual(command["action"], "module.ir.send")
+        self.assertEqual(command["parameters"]["raw"], [9000, 4500])
+        self.protocol.feed(
+            "ack",
+            json.dumps(
+                {
+                    "schema": "qyzl.cyd.prototype/1",
+                    "gateway_id": "cyd_aabbccddeeff",
+                    "boot_id": self.protocol.boot_id,
+                    "sequence": 3,
+                    "session_id": self.protocol.session_id,
+                    "command_id": command["command_id"],
+                    "result": "executed",
+                    "error_code": "",
+                    "indicator": "off",
+                    "confidence": "transmitted_only",
+                }
+            ),
+            False,
+        )
+        await task
 
     async def test_command_waits_for_correlated_ack_and_never_replays(self):
         await self.handshake()
@@ -220,10 +326,11 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.now = 31
         self.assertFalse(self.protocol.online)
 
-    async def test_unknown_schema_and_firmware_are_rejected(self):
+    async def test_unknown_schema_is_rejected_but_new_firmware_is_accepted(self):
         self.protocol.feed("hello", self.telemetry(schema="qyzl.gateway/1"), False)
-        self.protocol.feed("hello", self.telemetry(firmware="99.0"), False)
         self.assertFalse(self.protocol.online)
+        self.protocol.feed("hello", self.telemetry(firmware="99.0"), False)
+        self.assertTrue(self.protocol.online)
 
     async def test_broker_reconnect_reserves_revision_against_old_config_ack(self):
         await self.handshake()

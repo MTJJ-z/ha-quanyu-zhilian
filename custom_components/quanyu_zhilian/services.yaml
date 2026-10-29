@@ -1,0 +1,31 @@
+execute:
+  name: Execute component command
+  description: Execute a command advertised by the selected CYD component.
+  fields:
+    gateway_id:
+      name: Gateway ID
+      description: The configured CYD gateway identifier.
+      required: true
+      example: cyd_08a570f3af48
+      selector:
+        text:
+    component_id:
+      name: Component ID
+      description: Component identifier from the firmware discovery descriptor.
+      required: true
+      example: ir.transmitter
+      selector:
+        text:
+    command_id:
+      name: Command ID
+      description: Command identifier advertised by that component.
+      required: true
+      example: send_raw
+      selector:
+        text:
+    parameters:
+      name: Parameters
+      description: Object containing values declared by the command descriptor.
+      required: false
+      selector:
+        object:

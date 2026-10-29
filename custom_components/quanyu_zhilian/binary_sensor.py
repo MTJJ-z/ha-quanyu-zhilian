@@ -5,7 +5,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .entity import GatewayEntity
+from .entity import ComponentEntity, GatewayEntity
 
 PARALLEL_UPDATES = 0
 
@@ -15,6 +15,11 @@ async def async_setup_entry(
 ) -> None:
     async_add_entities(
         GatewayBinarySensor(entry.runtime_data, key) for key in ("gateway_online", "control_ready")
+    )
+    entry.runtime_data.register_component_platform(
+        "binary_sensor",
+        async_add_entities,
+        lambda descriptor: [GatewayComponentBinarySensor(entry.runtime_data, descriptor)],
     )
 
 
@@ -36,3 +41,14 @@ class GatewayBinarySensor(GatewayEntity, BinarySensorEntity):
             if self.key == "gateway_online"
             else self.coordinator.protocol.ready
         )
+
+
+class GatewayComponentBinarySensor(ComponentEntity, BinarySensorEntity):
+    def __init__(self, coordinator, descriptor: dict) -> None:
+        super().__init__(coordinator, descriptor, descriptor["id"])
+        self._attr_device_class = descriptor.get("device_class")
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self.component_state.get("value")
+        return value if type(value) is bool else None
