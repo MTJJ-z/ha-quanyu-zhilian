@@ -1,9 +1,9 @@
 {
   "domain": "quanyu_zhilian",
   "name": "全域智联",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "config_flow": true,
-  "dependencies": ["mqtt"],
+  "dependencies": ["mqtt", "panel_custom", "http"],
   "integration_type": "device",
   "iot_class": "local_push",
   "requirements": [],

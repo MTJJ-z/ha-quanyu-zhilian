@@ -13,6 +13,7 @@ from homeassistant.helpers import device_registry as dr
 from .const import CONF_AREA_ID, CONF_GATEWAY_ID, DOMAIN
 from .coordinator import GatewayCoordinator
 from .ir_services import register_ir_services
+from .panel import async_setup_panel
 from .protocol import GatewayError
 
 PLATFORMS = (
@@ -22,6 +23,12 @@ PLATFORMS = (
     Platform.SWITCH,
     Platform.BUTTON,
 )
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register the shared panel once; gateways keep separate config entries."""
+    await async_setup_panel(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -70,6 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         manufacturer="全域智联",
         model="CYD ESP32-32E-1",
         name=f"CYD {entry.data[CONF_GATEWAY_ID]}",
+        configuration_url=f"homeassistant://quanyu-zhilian?gateway={entry.data[CONF_GATEWAY_ID]}",
     )
     coordinator.device_id = device.id
     # Only initialize the area on creation. Subsequent device-area edits in HA

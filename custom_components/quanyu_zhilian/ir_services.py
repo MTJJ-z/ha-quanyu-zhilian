@@ -51,6 +51,17 @@ def register_ir_services(hass: HomeAssistant) -> None:
         await gateway.async_command(command_id, target=target, command_id=command_id,
                                     parameters=parameters)
 
+    async def gateways(call: ServiceCall):
+        return {"gateways": [
+            {"gateway_id": gateway_id, "online": gateway.protocol.online,
+             "ready": gateway.protocol.ready,
+             "room": gateway.protocol.room,
+             "ir_send": any(command["action"] == "ir.send_raw"
+                             for descriptor in gateway.protocol.components.values()
+                             for command in descriptor["commands"].values())}
+            for gateway_id, gateway in hass.data.get(DOMAIN, {}).items()
+        ]}
+
     profile_schema = {vol.Required("profile_id"): cv.string}
     hass.services.async_register(
         DOMAIN, "ir_search", search,
@@ -62,6 +73,9 @@ def register_ir_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(DOMAIN, "ir_inspect", inspect,
                                  schema=vol.Schema(profile_schema),
+                                 supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(DOMAIN, "ir_gateways", gateways,
+                                 schema=vol.Schema({}),
                                  supports_response=SupportsResponse.ONLY)
     hass.services.async_register(
         DOMAIN, "ir_send", send,
