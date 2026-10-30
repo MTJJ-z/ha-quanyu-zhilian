@@ -44,7 +44,7 @@ data: 9000 4500 560
 """)
         self.assertEqual(len(records), 2)
         self.assertEqual(records[0]["command"], "02 00 00 00")
-        self.assertEqual(raw_parameters(records[1]), {"raw": [9000, 4500, 560], "frequency_khz": 38})
+        self.assertEqual(raw_parameters(records[1]), {"raw": [9000, 4500, 560], "frequency_khz": 38, "duty_cycle": 50})
 
     def test_does_not_guess_parsed_protocol_or_truncate_raw(self):
         with self.assertRaisesRegex(LibraryError, "PARSED_PROTOCOL"):
@@ -52,9 +52,9 @@ data: 9000 4500 560
         base = {"type": "raw", "frequency": "38000", "duty_cycle": "0.5", "data": "9000 4500"}
         for overrides, reason in [
             ({"data": " ".join(["560"] * 101)}, "RAW_LENGTH"),
-            ({"data": "560 44227"}, "RAW_TIMING"),
-            ({"frequency": "38500"}, "FREQUENCY"),
-            ({"duty_cycle": "0.33"}, "DUTY_CYCLE"),
+            ({"data": "560 70000"}, "RAW_TIMING"),
+            ({"frequency": "61000"}, "FREQUENCY"),
+            ({"duty_cycle": "0.1"}, "DUTY_CYCLE"),
             ({"duty_cycle": "NaN"}, "DUTY_CYCLE"),
             ({"data": "560 abc"}, "INVALID_RAW"),
         ]:
@@ -70,14 +70,14 @@ data: 9000 4500 560
         self.assertEqual(self.library.search("' OR 1=1 --")["total"], 0)
         self.assertEqual(self.library.search("%_no_such_remote")["total"], 0)
 
-    def test_real_tcl_record_preserves_unsupported_long_gap(self):
+    def test_real_tcl_record_preserves_long_gap_and_is_sendable(self):
         results = self.library.search("ACs/TCL/Tcl.ir")["profiles"]
         self.assertEqual(len(results), 1)
         profile = self.library.profile(results[0]["id"])
         self.assertEqual(profile["signals"][0]["name"], "Power")
         record = self.library.signal(results[0]["id"], 0)
         self.assertIn("44227", record["data"])
-        self.assertFalse(profile["signals"][0]["cyd_sendable"])
+        self.assertTrue(profile["signals"][0]["cyd_sendable"])
         with self.assertRaises(LibraryError):
             self.library.signal(results[0]["id"], 999999)
 

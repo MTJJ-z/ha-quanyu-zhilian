@@ -1,7 +1,7 @@
 {
   "domain": "quanyu_zhilian",
   "name": "全域智联",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "config_flow": true,
   "dependencies": ["mqtt", "panel_custom", "http"],
   "integration_type": "device",

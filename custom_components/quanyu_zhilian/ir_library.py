@@ -1,7 +1,6 @@
 """Offline, read-only infrared catalogue. No network or HA dependencies."""
 
 import json
-import math
 import sqlite3
 import zlib
 from contextlib import closing
@@ -37,7 +36,7 @@ def parse_flipper(text: str) -> list[dict[str, str]]:
 
 
 def raw_parameters(signal: dict[str, str]) -> dict:
-    """Preflight against CYD 0.2.1–0.3.0; never truncate or clamp a waveform."""
+    """Preflight a raw waveform against the CYD raw transmitter limits."""
     if signal.get("type") != "raw":
         raise LibraryError("PARSED_PROTOCOL_NOT_SUPPORTED: record needs protocol encoding")
     try:
@@ -46,16 +45,15 @@ def raw_parameters(signal: dict[str, str]) -> dict:
         raw = [int(value) for value in signal["data"].split()]
     except (KeyError, ValueError) as err:
         raise LibraryError("INVALID_RAW_RECORD") from err
-    if not 30000 <= frequency <= 60000 or frequency % 1000:
-        raise LibraryError("UNSUPPORTED_FREQUENCY: CYD requires whole kHz from 30 to 60")
-    # IRremoteESP8266 sendRaw currently uses its default 50% duty cycle.
-    if not math.isfinite(duty) or abs(duty - 0.5) > 0.000001:
-        raise LibraryError("UNSUPPORTED_DUTY_CYCLE: current CYD uses 50%; original is preserved")
+    if not 30000 <= frequency <= 60000:
+        raise LibraryError("UNSUPPORTED_FREQUENCY: CYD supports 30 to 60 kHz")
+    if not 0.2 <= duty <= 0.5:
+        raise LibraryError("UNSUPPORTED_DUTY_CYCLE: CYD supports 20% to 50%")
     if not 2 <= len(raw) <= 100:
         raise LibraryError(f"RAW_LENGTH_NOT_SUPPORTED: {len(raw)} timings; CYD maximum is 100")
-    if any(not 100 <= value <= 30000 for value in raw):
-        raise LibraryError("RAW_TIMING_NOT_SUPPORTED: CYD range is 100–30000 us")
-    return {"raw": raw, "frequency_khz": frequency // 1000}
+    if any(not 100 <= value <= 65535 for value in raw):
+        raise LibraryError("RAW_TIMING_NOT_SUPPORTED: CYD range is 100–65535 us")
+    return {"raw": raw, "frequency_khz": round(frequency / 1000), "duty_cycle": round(duty * 100)}
 
 
 class InfraredLibrary:

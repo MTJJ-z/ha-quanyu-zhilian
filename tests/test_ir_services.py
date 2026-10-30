@@ -85,6 +85,7 @@ class ActionTests(unittest.IsolatedAsyncioTestCase):
             "commands": [{"id": "transmit", "action": "ir.send_raw", "name": "Send", "parameters": [
                 {"name": "raw", "type": "integer_array", "min_items": 2, "max_items": 100},
                 {"name": "frequency_khz", "type": "integer", "min": 30, "max": 60},
+                {"name": "duty_cycle", "type": "integer", "min": 20, "max": 50},
             ]}],
         }])
         self.actions = {}
@@ -117,7 +118,7 @@ class ActionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(suffix, "cmd")
         self.assertEqual(payload["target"], "custom.transmitter")
         self.assertEqual(payload["action"], "ir.send_raw")
-        self.assertEqual(payload["parameters"], {"raw": [9000, 4500, 560, 560], "frequency_khz": 38})
+        self.assertEqual(payload["parameters"], {"raw": [9000, 4500, 560, 560], "frequency_khz": 38, "duty_cycle": 50})
         self.assertEqual(self.protocol.last_command_result, "transmitted_only")
 
     async def test_invalid_or_offline_calls_publish_nothing(self):
