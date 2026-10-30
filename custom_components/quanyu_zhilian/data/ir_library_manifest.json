@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/Lucaslhm/Flipper-IRDB",
+  "revision": "d126fb1b6f1e114c52b4a8c19839ea65e3a9c24d",
+  "profiles": "8901",
+  "signals": "301915",
+  "unparsed_profiles": "0",
+  "format_version": "1-zlib",
+  "database_sha256": "ef87a2484e200dff237b488729dbe8cf99b73c3a799887c4f9c8b497e63572e6",
+  "parse_issues": []
+}

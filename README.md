@@ -1,4 +1,4 @@
-# 全域智联 Home Assistant 集成 0.2.0
+# 全域智联 Home Assistant 集成 0.3.0
 
 这是与 OmniSpace CYD 固件 `qyzl.cyd.prototype/1` 配套的集成。可选的 Component Protocol Extension 1 允许固件声明通用组件，集成据此创建实体并校验命令；旧固件继续使用原有固定实体。组件协议见 [`docs/COMPONENT_PROTOCOL.md`](docs/COMPONENT_PROTOCOL.md)。
 
@@ -7,16 +7,20 @@
 ### 通过 HACS 安装
 
 1. 在 HACS 的集成页面打开右上角菜单，选择“自定义存储库”。
-2. 填入此 GitHub 仓库地址，类别选择“集成”，然后添加。
+2. 填入 `https://github.com/MTJJ-z/ha-quanyu-zhilian`，类别选择“集成”，然后添加。
 3. 搜索并下载“全域智联”，重启 Home Assistant。
 
 重启后，前往“设置 → 设备与服务 → 添加集成”，搜索“全域智联”。
+
+已安装时，在 HACS 打开“全域智联”，更新或重新下载版本 `v0.3.0`，再重启 HA。
+HACS 使用发布附件 `quanyu_zhilian.zip`，一次下载代码和完整本地红外库。
+下载完成后可断开公网，红外查询和调用继续在局域网内运行。
 
 ### 手动安装
 
 将 `custom_components/quanyu_zhilian` 复制到 HA OS 的 `/config/custom_components/quanyu_zhilian`，然后重启 Home Assistant。MQTT 集成必须已配置并连接到 CYD 使用的同一 Broker。工程不修改 HA Core 或 HA OS。
 
-也可解压 `dist/quanyu_zhilian-0.2.0.zip`，将其中的 `custom_components` 目录合并到 `/config`。安装包仅包含 Python/JSON 源码及说明，不包含测试缓存或凭据。运行 `python build_release.py` 可重新生成安装包及 SHA256。
+也可解压 `dist/quanyu_zhilian-0.3.0.zip`，将其中的 `custom_components` 目录合并到 `/config`。安装包包含集成源码、本地红外数据库和来源说明，不包含测试缓存或凭据。运行 `python build_release.py` 可重新生成手动安装包、HACS 安装包及 SHA256。
 
 ## 添加网关
 
@@ -62,3 +66,17 @@ python -m compileall -q custom_components tests
 本地已验证：18 项协议状态机回归测试、Python 语法检查、JSON 解析和差异空白检查。Ruff 未安装。尚未验证：HA 中实际加载/配置流程、树莓派 Broker/CYD 端到端控制、上板断线恢复和长时间运行。
 
 HA 现场联调顺序：确认 Core 版本及 MQTT 配置 → 安装集成并重启 → 添加已配网 CYD → 查看 Area/控制就绪 → 选择绿灯并观察 GPIO/实物输出 → 断开节点及 Broker 检查 unavailable/结果未知 → 重启节点和 HA 检查重新握手。必须区分状态机测试通过、GPIO 回执和实物输出三种证据。
+# Offline infrared library (0.3.0)
+
+The installation now includes the full Flipper-IRDB snapshot at
+`d126fb1b6f1e114c52b4a8c19839ea65e3a9c24d`: 8,901 profiles and 301,915 signals.
+Search and inspect it entirely offline through `quanyu_zhilian.ir_search` and
+`quanyu_zhilian.ir_inspect` in Developer Tools → Actions. Compatible raw records
+can be sent once with `quanyu_zhilian.ir_send`. Stored coverage is broader than
+the current CYD transmitter's format and timing support; unsupported entries
+remain searchable and are explicitly rejected on send, never truncated.
+
+Copy the integration's complete `data/` directory along with the Python files.
+No Internet access or extra Python packages are needed on HAOS.
+See [offline installation and examples](docs/OFFLINE_IR_LIBRARY.md), including
+source revision, original licensing notice, and current transmission limits.

@@ -12,6 +12,7 @@ from homeassistant.helpers import device_registry as dr
 
 from .const import CONF_AREA_ID, CONF_GATEWAY_ID, DOMAIN
 from .coordinator import GatewayCoordinator
+from .ir_services import register_ir_services
 from .protocol import GatewayError
 
 PLATFORMS = (
@@ -31,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.runtime_data = coordinator
     coordinators = hass.data.setdefault(DOMAIN, {})
     coordinators[entry.data[CONF_GATEWAY_ID]] = coordinator
+    register_ir_services(hass)
     if not hass.services.has_service(DOMAIN, "execute"):
         async def get_gateway(call):
             gateway = hass.data.get(DOMAIN, {}).get(call.data.get("gateway_id"))

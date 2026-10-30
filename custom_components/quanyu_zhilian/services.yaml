@@ -1,3 +1,62 @@
+ir_search:
+  name: 本地红外库搜索
+  description: 离线搜索随集成安装的完整 Flipper-IRDB 快照，返回分页结果和来源版本。
+  fields:
+    query:
+      name: 品牌或型号关键词
+      example: TCL
+      selector:
+        text:
+    category:
+      name: 分类（可选）
+      example: ACs
+      selector:
+        text:
+    limit:
+      name: 每页条数
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 100
+          mode: box
+    offset:
+      name: 跳过条数
+      default: 0
+      selector:
+        number:
+          min: 0
+          mode: box
+ir_inspect:
+  name: 查看本地红外遥控器
+  description: 返回遥控器全部按键、索引和当前 CYD 固件的发送兼容限制。
+  fields:
+    profile_id:
+      name: 遥控器 ID（搜索结果中的 id）
+      required: true
+      selector:
+        text:
+ir_send:
+  name: 发送本地红外库按键
+  description: 从本地库读取并通过指定网关发送一次；不支持的格式会拒绝，绝不截断波形。
+  fields:
+    gateway_id:
+      name: 网关 ID
+      required: true
+      selector:
+        text:
+    profile_id:
+      name: 遥控器 ID
+      required: true
+      selector:
+        text:
+    signal_index:
+      name: 按键索引（从 0 开始）
+      required: true
+      selector:
+        number:
+          min: 0
+          mode: box
 execute:
   name: Execute component command
   description: Execute a command advertised by the selected CYD component.
