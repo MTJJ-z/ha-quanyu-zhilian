@@ -145,6 +145,24 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(GatewayError, "INVALID_ARGUMENT"):
             validate_parameters(command, {"raw": [9000], "frequency_khz": 99})
 
+    async def test_learning_mode_switch_descriptor_is_valid(self):
+        descriptor = {
+            "id": "ir.capture",
+            "platform": "switch",
+            "name": "Infrared learning mode",
+            "state_key": "ir_capture",
+            "commands": [{
+                "id": "set", "action": "ir.capture.set", "name": "Set",
+                "parameters": [{"name": "enabled", "type": "boolean"}],
+            }],
+            "control": {"command_id": "set", "value_parameter": "enabled"},
+        }
+        components = validate_components(1, [descriptor])
+        self.assertIsNotNone(components)
+        assert components is not None
+        command = components["ir.capture"]["commands"]["set"]
+        self.assertEqual(validate_parameters(command, {"enabled": True}), {"enabled": True})
+
     async def test_invalid_component_descriptors_are_rejected(self):
         self.assertIsNone(validate_components(1, [{"id": "../unsafe"}]))
         self.assertIsNone(validate_components(2, []))

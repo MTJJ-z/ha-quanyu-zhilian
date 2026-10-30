@@ -25,13 +25,14 @@ within a gateway and match `[a-z][a-z0-9_.-]{0,63}`. The allowed platforms are
     },
     {
       "id": "ir.capture",
-      "platform": "button",
-      "name": "Infrared capture",
+      "platform": "switch",
+      "name": "Infrared learning mode",
       "state_key": "capture_state",
       "commands": [
-        {"id": "start", "action": "receive_start", "name": "Start learning", "parameters": []},
-        {"id": "stop", "action": "receive_stop", "name": "Stop learning", "parameters": []}
-      ]
+        {"id": "set", "action": "capture.set", "name": "Set learning mode",
+         "parameters": [{"name": "enabled", "type": "boolean"}]}
+      ],
+      "control": {"command_id": "set", "value_parameter": "enabled"}
     }
   ]
 }
