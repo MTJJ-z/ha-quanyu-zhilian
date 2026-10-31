@@ -121,7 +121,8 @@ class ActionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["profiles"][0]["id"], "test")
         result = await self.call("ir_inspect", profile_id="test")
         self.assertTrue(result["signals"][0]["cyd_sendable"])
-        self.assertFalse(result["signals"][1]["cyd_sendable"])
+        self.assertTrue(result["signals"][1]["cyd_sendable"])
+        self.assertFalse(result["signals"][2]["cyd_sendable"])
         await self.call("ir_send", gateway_id=self.protocol.gateway_id, profile_id="test", signal_index=0)
         self.assertEqual(len(self.sent), 1)
         suffix, payload = self.sent[0]
