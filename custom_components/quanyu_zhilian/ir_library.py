@@ -13,6 +13,58 @@ class LibraryError(ValueError):
     """A catalogue record cannot be used as requested."""
 
 
+PARSED_PROTOCOLS = {
+    "NEC": ("NEC", 32),
+    "NECext": ("NECEXT", 32),
+    "NEC42": ("NEC42", 42),
+    "NEC42ext": ("NEC42EXT", 42),
+    "Samsung32": ("SAMSUNG", 32),
+    "RC5": ("RC5", 14),
+    "RC5X": ("RC5X", 14),
+    "RC6": ("RC6", 21),
+    "SIRC": ("SONY", 12),
+    "SIRC15": ("SONY", 15),
+    "SIRC20": ("SONY", 20),
+    "Pioneer": ("PIONEER", 33),
+}
+
+
+def _parsed_parameters(signal: dict[str, str]) -> dict:
+    protocol = signal.get("protocol", "")
+    mapping = PARSED_PROTOCOLS.get(protocol)
+    if mapping is None:
+        raise LibraryError(f"UNSUPPORTED_PARSED_PROTOCOL: {protocol or 'missing protocol'}")
+    try:
+        address_bytes = bytes.fromhex(signal["address"])
+        command_bytes = bytes.fromhex(signal["command"])
+    except (KeyError, ValueError) as err:
+        raise LibraryError("INVALID_PARSED_RECORD") from err
+    if len(address_bytes) > 4 or len(command_bytes) > 4:
+        raise LibraryError("INVALID_PARSED_RECORD")
+    address = int.from_bytes(address_bytes, "little")
+    command = int.from_bytes(command_bytes, "little")
+    protocol_id, bits = mapping
+    limits = {
+        "NEC": (0xFF, 0xFF), "NECEXT": (0xFFFF, 0xFFFF),
+        "NEC42": (0x1FFF, 0xFF), "NEC42EXT": (0x3FFFFFF, 0xFFFF),
+        "SAMSUNG": (0xFF, 0xFF),
+        "RC5": (0x1F, 0x3F), "RC5X": (0x1F, 0x7F),
+        "RC6": (0xFF, 0xFF), "SONY": (0x1FFF, 0x7F),
+        "PIONEER": (0xFF, 0xFF),
+    }
+    max_address, max_command = limits[protocol_id]
+    if address > max_address or command > max_command:
+        raise LibraryError(f"UNSUPPORTED_PARSED_FIELDS: {protocol}")
+    return {"protocol": protocol_id, "address": address, "command": command, "bits": bits}
+
+
+def send_parameters(signal: dict[str, str]) -> dict:
+    """Return a firmware command for a validated parsed or raw catalogue entry."""
+    if signal.get("type") == "parsed":
+        return {"mode": "parsed", **_parsed_parameters(signal)}
+    return {"mode": "raw", **raw_parameters(signal)}
+
+
 def parse_flipper(text: str) -> list[dict[str, str]]:
     """Keep raw and parsed entries without guessing encodings or dropping fields."""
     signals = []
@@ -49,10 +101,12 @@ def raw_parameters(signal: dict[str, str]) -> dict:
         raise LibraryError("UNSUPPORTED_FREQUENCY: CYD supports 30 to 60 kHz")
     if not 0.2 <= duty <= 0.5:
         raise LibraryError("UNSUPPORTED_DUTY_CYCLE: CYD supports 20% to 50%")
-    if not 2 <= len(raw) <= 100:
-        raise LibraryError(f"RAW_LENGTH_NOT_SUPPORTED: {len(raw)} timings; CYD maximum is 100")
-    if any(not 100 <= value <= 65535 for value in raw):
-        raise LibraryError("RAW_TIMING_NOT_SUPPORTED: CYD range is 100–65535 us")
+    if not 2 <= len(raw) <= 500:
+        raise LibraryError(f"RAW_LENGTH_NOT_SUPPORTED: {len(raw)} timings; CYD maximum is 500")
+    if any(value < 100 or (index % 2 == 0 and value > 65535)
+           or (index % 2 == 1 and value > 1_000_000)
+           for index, value in enumerate(raw)):
+        raise LibraryError("RAW_TIMING_NOT_SUPPORTED: marks 100–65535 us; spaces 100–1000000 us")
     return {"raw": raw, "frequency_khz": round(frequency / 1000), "duty_cycle": round(duty * 100)}
 
 
@@ -96,11 +150,18 @@ class InfraredLibrary:
         for item in signals:
             signal = json.loads(zlib.decompress(item["data"]))
             try:
-                raw_parameters(signal)
+                parameters = send_parameters(signal)
                 reason = None
             except LibraryError as err:
+                parameters = None
                 reason = str(err)
-            result["signals"].append({"index": item["ordinal"], "name": signal.get("name", ""), "format": signal.get("type"), "protocol": signal.get("protocol"), "cyd_sendable": reason is None, "limitation": reason})
+            result["signals"].append({
+                "index": item["ordinal"], "name": signal.get("name", ""),
+                "format": signal.get("type"), "protocol": signal.get("protocol"),
+                "send_mode": parameters["mode"] if parameters else None,
+                "cyd_sendable": reason is None,
+                "limitation": reason,
+            })
         return result
 
     def signal(self, profile_id: str, index: int):

@@ -1,4 +1,4 @@
-# 全域智联 Home Assistant 集成 0.3.2
+# 全域智联 Home Assistant 集成 0.3.3
 
 这是与 OmniSpace CYD 固件 `qyzl.cyd.prototype/1` 配套的集成。可选的 Component Protocol Extension 1 允许固件声明通用组件，集成据此创建实体并校验命令；旧固件继续使用原有固定实体。组件协议见 [`docs/COMPONENT_PROTOCOL.md`](docs/COMPONENT_PROTOCOL.md)。
 
@@ -12,7 +12,7 @@
 
 重启后，前往“设置 → 设备与服务 → 添加集成”，搜索“全域智联”。
 
-已安装时，在 HACS 打开“全域智联”，更新或重新下载版本 `v0.3.2`，再重启 HA。
+已安装时，在 HACS 打开“全域智联”，更新或重新下载版本 `v0.3.3`，再重启 HA。
 HACS 使用发布附件 `quanyu_zhilian.zip`，一次下载代码和完整本地红外库。
 下载完成后可断开公网，红外查询和调用继续在局域网内运行。
 
@@ -20,7 +20,7 @@ HACS 使用发布附件 `quanyu_zhilian.zip`，一次下载代码和完整本地
 
 将 `custom_components/quanyu_zhilian` 复制到 HA OS 的 `/config/custom_components/quanyu_zhilian`，然后重启 Home Assistant。MQTT 集成必须已配置并连接到 CYD 使用的同一 Broker。工程不修改 HA Core 或 HA OS。
 
-也可解压 `dist/quanyu_zhilian-0.3.2.zip`，将其中的 `custom_components` 目录合并到 `/config`。安装包包含集成源码、本地红外数据库和来源说明，不包含测试缓存或凭据。运行 `python build_release.py` 可重新生成手动安装包、HACS 安装包及 SHA256。
+也可解压 `dist/quanyu_zhilian-0.3.3.zip`，将其中的 `custom_components` 目录合并到 `/config`。安装包包含集成源码、本地红外数据库和来源说明，不包含测试缓存或凭据。运行 `python build_release.py` 可重新生成手动安装包、HACS 安装包及 SHA256。
 
 ## 添加网关
 

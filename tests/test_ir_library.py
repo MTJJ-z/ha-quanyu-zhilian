@@ -19,6 +19,7 @@ from quanyu_zhilian.ir_library import (  # noqa: E402
     LibraryError,
     parse_flipper,
     raw_parameters,
+    send_parameters,
 )
 
 
@@ -45,14 +46,56 @@ data: 9000 4500 560
         self.assertEqual(len(records), 2)
         self.assertEqual(records[0]["command"], "02 00 00 00")
         self.assertEqual(raw_parameters(records[1]), {"raw": [9000, 4500, 560], "frequency_khz": 38, "duty_cycle": 50})
+        self.assertEqual(send_parameters(records[0]), {
+            "mode": "parsed", "protocol": "NEC", "address": 1,
+            "command": 2, "bits": 32,
+        })
 
-    def test_does_not_guess_parsed_protocol_or_truncate_raw(self):
-        with self.assertRaisesRegex(LibraryError, "PARSED_PROTOCOL"):
-            raw_parameters({"type": "parsed", "protocol": "NEC"})
+    def test_parsed_protocol_aliases_and_unsupported_variants(self):
+        base = {"type": "parsed", "protocol": "NECext", "address": "20 9F 00 00", "command": "11 00 00 00"}
+        self.assertEqual(send_parameters(base), {
+            "mode": "parsed", "protocol": "NECEXT", "address": 0x9F20,
+            "command": 0x11, "bits": 32,
+        })
+        for protocol in ("Kaseikyo", "SIRC15-extra"):
+            with self.subTest(protocol=protocol), self.assertRaisesRegex(LibraryError, "UNSUPPORTED_PARSED_PROTOCOL"):
+                send_parameters({**base, "protocol": protocol})
+        with self.assertRaisesRegex(LibraryError, "UNSUPPORTED_PARSED_FIELDS"):
+            send_parameters({**base, "address": "00 00 01 00"})
+
+        nec42 = {**base, "protocol": "NEC42", "address": "34 12 00 00", "command": "56 00 00 00"}
+        self.assertEqual(send_parameters(nec42), {
+            "mode": "parsed", "protocol": "NEC42", "address": 0x1234,
+            "command": 0x56, "bits": 42,
+        })
+
+    def test_supported_protocol_bit_lengths(self):
+        examples = {
+            "NEC": ("00 00 00 00", "00 00 00 00", "NEC", 32),
+            "NEC42ext": ("00 00 00 00", "00 00 00 00", "NEC42EXT", 42),
+            "Samsung32": ("01 00 00 00", "02 00 00 00", "SAMSUNG", 32),
+            "RC5": ("01 00 00 00", "02 00 00 00", "RC5", 14),
+            "RC5X": ("01 00 00 00", "42 00 00 00", "RC5X", 14),
+            "RC6": ("01 00 00 00", "02 00 00 00", "RC6", 21),
+            "SIRC": ("01 00 00 00", "02 00 00 00", "SONY", 12),
+            "SIRC15": ("01 00 00 00", "02 00 00 00", "SONY", 15),
+            "SIRC20": ("01 00 00 00", "02 00 00 00", "SONY", 20),
+            "Pioneer": ("01 00 00 00", "02 00 00 00", "PIONEER", 33),
+        }
+        for source, (address, command, protocol, bits) in examples.items():
+            with self.subTest(protocol=source):
+                payload = send_parameters({
+                    "type": "parsed", "protocol": source,
+                    "address": address, "command": command,
+                })
+                self.assertEqual((payload["protocol"], payload["bits"]), (protocol, bits))
+
+    def test_does_not_truncate_raw(self):
         base = {"type": "raw", "frequency": "38000", "duty_cycle": "0.5", "data": "9000 4500"}
         for overrides, reason in [
-            ({"data": " ".join(["560"] * 101)}, "RAW_LENGTH"),
-            ({"data": "560 70000"}, "RAW_TIMING"),
+            ({"data": " ".join(["560"] * 501)}, "RAW_LENGTH"),
+            ({"data": "70000 560"}, "RAW_TIMING"),
+            ({"data": "560 1000001"}, "RAW_TIMING"),
             ({"frequency": "61000"}, "FREQUENCY"),
             ({"duty_cycle": "0.1"}, "DUTY_CYCLE"),
             ({"duty_cycle": "NaN"}, "DUTY_CYCLE"),
@@ -60,6 +103,8 @@ data: 9000 4500 560
         ]:
             with self.subTest(reason=reason), self.assertRaisesRegex(LibraryError, reason):
                 raw_parameters({**base, **overrides})
+        self.assertEqual(len(raw_parameters({**base, "data": " ".join(["560"] * 500)})["raw"]), 500)
+        self.assertEqual(raw_parameters({**base, "data": "560 70000"})["raw"], [560, 70000])
 
     def test_search_pagination_filters_and_safe_queries(self):
         first = self.library.search("", "ACs", limit=2)

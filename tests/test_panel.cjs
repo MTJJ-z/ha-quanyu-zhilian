@@ -11,19 +11,19 @@ const fs = require("node:fs");
  await page.setContent('<html lang="zh-CN"><body style="margin:0"><quanyu-zhilian-panel></quanyu-zhilian-panel></body></html>');
  await page.addScriptTag({path:path.join(__dirname,"../custom_components/quanyu_zhilian/frontend/panel.js")});
  await page.evaluate(()=>{
-   window.mock={ready:true,failSend:false,calls:[],requests:[]};
+   window.mock={ready:true,parsed:true,failSend:false,calls:[],requests:[]};
    const profiles=[{id:"tcl",model:"客厅测试遥控器",brand:"TCL",category:"ACs",signal_count:3},
      {id:"tv",model:"电视测试遥控器",brand:"Example",category:"TVs",signal_count:1}];
    const source={profiles:"8901",signals:"301915",revision:"d126fb1b6f1e114c52b4a8c19839ea65e3a9c24d"};
    const fixture={id:"tcl",model:"客厅测试遥控器",brand:"TCL",path:"ACs/TCL/Example.ir",signals:[
-     {index:0,name:"电源",cyd_sendable:true,limitation:null},
-     {index:1,name:"温度 +",cyd_sendable:false,limitation:"RAW_LENGTH_NOT_SUPPORTED: 200"},
-     {index:2,name:'<img src=x onerror=alert(1)>',cyd_sendable:false,limitation:"PARSED_PROTOCOL_NOT_SUPPORTED"},
+     {index:0,name:"电源",send_mode:"raw",cyd_sendable:true,limitation:null},
+     {index:1,name:"音量 +",send_mode:"parsed",protocol:"NECEXT",cyd_sendable:true,limitation:null},
+     {index:2,name:'<img src=x onerror=alert(1)>',send_mode:null,cyd_sendable:false,limitation:"UNSUPPORTED_PARSED_PROTOCOL: Kaseikyo"},
    ]};
    document.querySelector("quanyu-zhilian-panel").hass={
      callWS:async(msg)=>{
        window.mock.requests.push(msg);
-       if(msg.service==="ir_gateways")return {response:{gateways:[{gateway_id:"cyd_08a570f3af48",room:"客厅",online:window.mock.ready,ready:window.mock.ready,ir_send:true}]}};
+       if(msg.service==="ir_gateways")return {response:{gateways:[{gateway_id:"cyd_08a570f3af48",room:"客厅",online:window.mock.ready,ready:window.mock.ready,ir_send:true,ir_raw_send:true,ir_parsed_send:window.mock.parsed}]}};
        if(msg.service==="ir_search"){
          if(msg.service_data.query==="error")throw Error("模拟数据库错误");
          return {response:{profiles:msg.service_data.query==="missing"?[]:profiles,total:msg.service_data.query==="missing"?0:2,source}};
@@ -40,14 +40,20 @@ const fs = require("node:fs");
  await panel.locator(".remote").first().click();
  await panel.locator(".key").first().waitFor();
  assert.equal(await panel.locator(".key").count(),3);
- assert.equal(await panel.locator(".key:enabled").count(),1);
+ assert.equal(await panel.locator(".key:enabled").count(),2);
  assert.equal(await panel.locator("#keys img").count(),0,"untrusted signal text must not become HTML");
  await panel.locator(".key").first().click();
  await page.waitForFunction(()=>document.querySelector("quanyu-zhilian-panel").shadowRoot.querySelector("#notice").textContent.includes("CYD 已回执"));
  const calls=await page.evaluate(()=>window.mock.calls);
  assert.deepEqual(calls[0],{domain:"quanyu_zhilian",service:"ir_send",data:{gateway_id:"cyd_08a570f3af48",profile_id:"tcl",signal_index:0}});
  await panel.locator("#supported-only").check();
- assert.equal(await panel.locator(".key").count(),1);
+ assert.equal(await panel.locator(".key").count(),2);
+ await page.evaluate(()=>{window.mock.parsed=false;});
+ await panel.locator("#refresh").click();
+ assert.equal(await panel.locator(".key:enabled").count(),1);
+ assert.ok((await panel.locator(".key").nth(1).innerText()).includes("更新 CYD 固件"));
+ await page.evaluate(()=>{window.mock.parsed=true;});
+ await panel.locator("#refresh").click();
  await page.evaluate(()=>{window.mock.failSend=true;});
  await panel.locator(".key").first().click();
  await page.waitForFunction(()=>document.querySelector("quanyu-zhilian-panel").shadowRoot.querySelector("#notice").textContent.includes("RESULT_UNKNOWN"));

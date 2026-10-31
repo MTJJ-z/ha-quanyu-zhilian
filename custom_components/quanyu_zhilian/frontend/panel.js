@@ -65,8 +65,8 @@ class QuanyuZhilianPanel extends HTMLElement {
     }catch(error){this.gatewayError=true;this.$("gateway-status").textContent="网关状态读取失败："+this.message(error);this.renderKeys();}
   }
   currentGateway(){return this.gateways.find(g=>g.gateway_id===this.$("gateway").value);}
-  canSend(){const gateway=this.currentGateway();return !this.gatewayError && gateway?.ready && gateway?.ir_send && !this.sending;}
-  renderGateway(){const g=this.currentGateway();this.$("gateway-status").textContent=!g?"请在设置 → 设备与服务中添加全域智联网关。":!g.online?"网关离线，码库仍可浏览。":!g.ready?"网关在线，正在等待控制会话就绪。":!g.ir_send?"当前固件未声明红外发送能力。":"已就绪 · 按键将发送到此网关";}
+  canSend(signal){const gateway=this.currentGateway();const capability=signal?.send_mode==="parsed"?gateway?.ir_parsed_send:gateway?.ir_raw_send??gateway?.ir_send;return !this.gatewayError&&gateway?.ready&&capability&&!this.sending;}
+  renderGateway(){const g=this.currentGateway();this.$("gateway-status").textContent=!g?"请在设置 → 设备与服务中添加全域智联网关。":!g.online?"网关离线，码库仍可浏览。":!g.ready?"网关在线，正在等待控制会话就绪。":!g.ir_send?"当前固件未声明红外发送能力。":!g.ir_parsed_send?"原始波形可发送；协议编码按键需要更新 CYD 固件。":"已就绪 · 原始波形与已适配协议均可发送";}
   async search(){
     const id=++this.searchId;this.loading=true;this.updatePaging();this.$("count").textContent="正在搜索…";
     try{
@@ -92,19 +92,19 @@ class QuanyuZhilianPanel extends HTMLElement {
   limitation(reason){
     if(!reason)return "原始波形 · 点击发送";
     const key=reason.split(":")[0];
-    return ({PARSED_PROTOCOL_NOT_SUPPORTED:"协议编码暂未适配",UNSUPPORTED_FREQUENCY:"载波频率超出当前固件范围",UNSUPPORTED_DUTY_CYCLE:"占空比暂不兼容",RAW_LENGTH_NOT_SUPPORTED:"波形长度超出当前固件范围",RAW_TIMING_NOT_SUPPORTED:"波形间隔超出当前固件范围",INVALID_RAW_RECORD:"原始记录不完整"})[key]||"当前固件暂不支持";
+    return ({PARSED_PROTOCOL_NOT_SUPPORTED:"协议编码暂未适配",UNSUPPORTED_PARSED_PROTOCOL:`协议 ${reason.split(":")[1]?.trim()||"未知"} 暂未适配`,UNSUPPORTED_PARSED_FIELDS:"协议字段超出当前编码器范围",INVALID_PARSED_RECORD:"解析记录格式无效",UNSUPPORTED_FREQUENCY:"载波频率超出当前固件范围",UNSUPPORTED_DUTY_CYCLE:"占空比暂不兼容",RAW_LENGTH_NOT_SUPPORTED:"波形段数超过 500",RAW_TIMING_NOT_SUPPORTED:"mark 需为 100–65535 微秒，space 需为 100–1000000 微秒",INVALID_RAW_RECORD:"原始记录不完整"})[key]||"当前固件暂不支持";
   }
   renderKeys(){
     this.$("keys").replaceChildren();this.$("key-tools").hidden=!this.profile;
     if(!this.profile)return;
     const supported=this.profile.signals.filter(s=>s.cyd_sendable);
-    this.$("key-count").textContent=`可发 ${supported.length} / ${this.profile.signals.length}`;
+    this.$("key-count").textContent=`当前可发送 ${supported.length} / ${this.profile.signals.length}`;
     const signals=this.$("supported-only").checked?supported:this.profile.signals;
-    for(const signal of signals){const button=document.createElement("button");button.className="key";button.disabled=!signal.cyd_sendable||!this.canSend();const title=document.createElement("span");title.textContent=signal.name;const sub=document.createElement("small");sub.textContent=this.limitation(signal.limitation);button.title=signal.limitation||signal.name;button.append(title,sub);button.onclick=()=>this.send(signal);this.$("keys").append(button);}
+    for(const signal of signals){const button=document.createElement("button");button.className="key";button.disabled=!signal.cyd_sendable||!this.canSend(signal);const title=document.createElement("span");title.textContent=signal.name;const sub=document.createElement("small");sub.textContent=!signal.cyd_sendable?this.limitation(signal.limitation):!this.canSend(signal)&&signal.send_mode==="parsed"?"更新 CYD 固件以发送协议码":signal.send_mode==="parsed"?`协议编码发送 · ${signal.protocol}`:"原始波形发送";button.title=signal.limitation||(!this.canSend(signal)&&signal.send_mode==="parsed"?"需要支持 ir.send_parsed 的固件":signal.name);button.append(title,sub);button.onclick=()=>this.send(signal);this.$("keys").append(button);}
     if(!signals.length){const p=document.createElement("p");p.textContent="此遥控器暂无当前固件可发送的按键，可取消筛选查看全部记录。";this.$("keys").append(p);}
   }
   async send(signal){
-    if(!this.canSend()||!this.profile||!signal.cyd_sendable)return;
+    if(!this.canSend(signal)||!this.profile||!signal.cyd_sendable)return;
     const gatewayId=this.$("gateway").value, profileId=this.profile.id;
     this.sending=true;this.renderKeys();this.notice(`正在通过 ${gatewayId} 发送「${signal.name}」…`);
     try{await this._hass.callService("quanyu_zhilian","ir_send",{gateway_id:gatewayId,profile_id:profileId,signal_index:signal.index});this.notice(`「${signal.name}」已发送，CYD 已回执。请观察电器是否响应。`);}

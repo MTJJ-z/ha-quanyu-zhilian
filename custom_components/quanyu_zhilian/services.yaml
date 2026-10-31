@@ -41,7 +41,7 @@ ir_gateways:
   description: 返回已配置的全域智联网关及其红外发送能力。
 ir_send:
   name: 发送本地红外库按键
-  description: 从本地库读取并通过指定网关发送一次；不支持的格式会拒绝，绝不截断波形。
+  description: 从本地库读取并通过指定网关发送一次；支持的解析协议使用协议编码器，其他格式仅在原始波形可安全传输时发送。
   fields:
     gateway_id:
       name: 网关 ID

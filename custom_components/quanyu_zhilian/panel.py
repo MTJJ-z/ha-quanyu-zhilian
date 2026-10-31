@@ -14,5 +14,5 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
     await panel_custom.async_register_panel(
         hass, frontend_url_path="quanyu-zhilian", webcomponent_name="quanyu-zhilian-panel",
         sidebar_title="全域智联", sidebar_icon="mdi:remote", require_admin=True,
-        module_url="/quanyu_zhilian/panel.js?v=0.3.2", config_panel_domain="quanyu_zhilian",
+        module_url="/quanyu_zhilian/panel.js?v=0.3.3", config_panel_domain="quanyu_zhilian",
     )

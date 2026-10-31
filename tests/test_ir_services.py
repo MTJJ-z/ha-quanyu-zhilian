@@ -43,7 +43,8 @@ class ActionTests(unittest.IsolatedAsyncioTestCase):
             """)
             for i, record in enumerate([
                 {"name": "Power", "type": "raw", "frequency": "38000", "duty_cycle": "0.5", "data": "9000 4500 560 560"},
-                {"name": "Unsupported", "type": "parsed", "protocol": "NEC"},
+                {"name": "Power parsed", "type": "parsed", "protocol": "NECext", "address": "20 9F 00 00", "command": "11 00 80 00"},
+                {"name": "Unsupported", "type": "parsed", "protocol": "Kaseikyo", "address": "78 02 20 03", "command": "C0 00 00 00"},
             ]):
                 db.execute("INSERT INTO signals VALUES (?, ?, ?)", ("test", i, zlib.compress(json.dumps(record).encode())))
         db.close()
@@ -83,9 +84,15 @@ class ActionTests(unittest.IsolatedAsyncioTestCase):
         self.protocol.components = validate_components(1, [{
             "id": "custom.transmitter", "platform": "sensor", "name": "Transmitter", "state_key": "signal",
             "commands": [{"id": "transmit", "action": "ir.send_raw", "name": "Send", "parameters": [
-                {"name": "raw", "type": "integer_array", "min_items": 2, "max_items": 100},
+                {"name": "raw", "type": "integer_array", "min_items": 2, "max_items": 500},
                 {"name": "frequency_khz", "type": "integer", "min": 30, "max": 60},
                 {"name": "duty_cycle", "type": "integer", "min": 20, "max": 50},
+            ]}, {"id": "parsed", "action": "ir.send_parsed", "name": "Send parsed", "parameters": [
+                {"name": "protocol", "type": "string"},
+                {"name": "address", "type": "integer", "min": 0, "max": 65535},
+                {"name": "command", "type": "integer", "min": 0, "max": 65535},
+                {"name": "bits", "type": "integer", "min": 1, "max": 64},
+                {"name": "vendor_data", "type": "integer", "required": False, "min": 0, "max": 4294967295},
             ]}],
         }])
         self.actions = {}
@@ -107,6 +114,9 @@ class ActionTests(unittest.IsolatedAsyncioTestCase):
         return await handler(types.SimpleNamespace(data=schema(data)))
 
     async def test_search_inspect_send_without_network_or_fixed_component_id(self):
+        capabilities = await self.call("ir_gateways")
+        self.assertTrue(capabilities["gateways"][0]["ir_raw_send"])
+        self.assertTrue(capabilities["gateways"][0]["ir_parsed_send"])
         result = await self.call("ir_search", query="Example")
         self.assertEqual(result["profiles"][0]["id"], "test")
         result = await self.call("ir_inspect", profile_id="test")
@@ -121,9 +131,17 @@ class ActionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["parameters"], {"raw": [9000, 4500, 560, 560], "frequency_khz": 38, "duty_cycle": 50})
         self.assertEqual(self.protocol.last_command_result, "transmitted_only")
 
+        await self.call("ir_send", gateway_id=self.protocol.gateway_id, profile_id="test", signal_index=1)
+        _, payload = self.sent[-1]
+        self.assertEqual(payload["action"], "ir.send_parsed")
+        self.assertEqual(payload["target"], "custom.transmitter")
+        self.assertEqual(payload["parameters"], {
+            "protocol": "NECEXT", "address": 0x9F20, "command": 0x8011, "bits": 32,
+        })
+
     async def test_invalid_or_offline_calls_publish_nothing(self):
-        with self.assertRaisesRegex(self.HAError, "PARSED_PROTOCOL"):
-            await self.call("ir_send", gateway_id=self.protocol.gateway_id, profile_id="test", signal_index=1)
+        with self.assertRaisesRegex(self.HAError, "UNSUPPORTED_PARSED_PROTOCOL"):
+            await self.call("ir_send", gateway_id=self.protocol.gateway_id, profile_id="test", signal_index=2)
         with self.assertRaisesRegex(self.HAError, "Unknown gateway"):
             await self.call("ir_send", gateway_id="missing", profile_id="test", signal_index=0)
         self.assertEqual(self.sent, [])

@@ -8,7 +8,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
-from .ir_library import InfraredLibrary, LibraryError, raw_parameters
+from .ir_library import InfraredLibrary, LibraryError, send_parameters
 
 
 def register_ir_services(hass: HomeAssistant) -> None:
@@ -34,29 +34,36 @@ def register_ir_services(hass: HomeAssistant) -> None:
     async def send(call: ServiceCall):
         signal = await worker(library.signal, call.data["profile_id"], call.data["signal_index"])
         try:
-            parameters = raw_parameters(signal)
+            payload = send_parameters(signal)
         except LibraryError as err:
             raise HomeAssistantError(str(err)) from err
         gateway = hass.data.get(DOMAIN, {}).get(call.data["gateway_id"])
         if gateway is None:
             raise HomeAssistantError("Unknown gateway_id")
         # Use discovery rather than assuming a target ID from one firmware.
+        action = "ir.send_parsed" if payload.pop("mode") == "parsed" else "ir.send_raw"
         candidates = [(descriptor["id"], command["id"])
                       for descriptor in gateway.protocol.components.values()
                       for command in descriptor["commands"].values()
-                      if command["action"] == "ir.send_raw"]
+                      if command["action"] == action]
         if len(candidates) != 1:
-            raise HomeAssistantError("Gateway must advertise exactly one ir.send_raw command")
+            raise HomeAssistantError(f"Gateway must advertise exactly one {action} command")
         target, command_id = candidates[0]
         await gateway.async_command(command_id, target=target, command_id=command_id,
-                                    parameters=parameters)
+                                    parameters=payload)
 
     async def gateways(call: ServiceCall):
         return {"gateways": [
             {"gateway_id": gateway_id, "online": gateway.protocol.online,
              "ready": gateway.protocol.ready,
              "room": gateway.protocol.room,
-             "ir_send": any(command["action"] == "ir.send_raw"
+             "ir_raw_send": any(command["action"] == "ir.send_raw"
+                                for descriptor in gateway.protocol.components.values()
+                                for command in descriptor["commands"].values()),
+             "ir_parsed_send": any(command["action"] == "ir.send_parsed"
+                                   for descriptor in gateway.protocol.components.values()
+                                   for command in descriptor["commands"].values()),
+             "ir_send": any(command["action"] in ("ir.send_raw", "ir.send_parsed")
                              for descriptor in gateway.protocol.components.values()
                              for command in descriptor["commands"].values())}
             for gateway_id, gateway in hass.data.get(DOMAIN, {}).items()
