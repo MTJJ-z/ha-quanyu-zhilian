@@ -43,7 +43,7 @@ class ActionTests(unittest.IsolatedAsyncioTestCase):
             """)
             for i, record in enumerate([
                 {"name": "Power", "type": "raw", "frequency": "38000", "duty_cycle": "0.5", "data": "9000 4500 560 560"},
-                {"name": "Power parsed", "type": "parsed", "protocol": "NECext", "address": "20 9F 00 00", "command": "11 00 80 00"},
+                {"name": "Power parsed", "type": "parsed", "protocol": "NECext", "address": "20 9F 00 00", "command": "11 80 00 00"},
                 {"name": "Unsupported", "type": "parsed", "protocol": "Kaseikyo", "address": "78 02 20 03", "command": "C0 00 00 00"},
             ]):
                 db.execute("INSERT INTO signals VALUES (?, ?, ?)", ("test", i, zlib.compress(json.dumps(record).encode())))
